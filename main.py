@@ -34,6 +34,7 @@ POPULAR_COINS = {
 }
 
 last_error = ""
+rub_rate = 1.0  # по умолчанию 1, если курс не пришёл
 
 
 def fetch_one_price(provider, symbol):
@@ -45,28 +46,55 @@ def fetch_one_price(provider, symbol):
     else:  # KuCoin
         params = {"symbol": f"{symbol}-USDT"}
 
-    response = requests.get(
-        provider["url"],
-        params=params,
-        headers=HEADERS,
-        timeout=10,
-    )
-    response.raise_for_status()
-    body = response.json()
+    try:
+        response = requests.get(
+            provider["url"],
+            params=params,
+            headers=HEADERS,
+            timeout=10,
+        )
+        response.raise_for_status()
+        body = response.json()
 
-    if provider["name"] == "Bybit":
+        if provider["name"] == "Bybit":
+            result = body.get("result", {})
+            items = result.get("list", [])
+            if body.get("retCode") != 0 or not items:
+                return None
+            return float(items[0]["lastPrice"])
+        elif provider["name"] == "MEXC":
+            return float(body["price"])
+        else:  # KuCoin
+            data = body.get("data")
+            if not data or not data.get("price"):
+                return None
+            return float(data["price"])
+    except Exception:
+        return None
+
+
+def fetch_rub_rate():
+    """Отдельный запрос за курсом USD/RUB у Bybit."""
+    global rub_rate
+    try:
+        params = {"category": "spot", "symbol": "USDTRUB"}
+        response = requests.get(
+            "https://api.bybit.com/v5/market/tickers",
+            params=params,
+            headers=HEADERS,
+            timeout=10,
+        )
+        response.raise_for_status()
+        body = response.json()
         result = body.get("result", {})
         items = result.get("list", [])
-        if body.get("retCode") != 0 or not items:
-            return None
-        return float(items[0]["lastPrice"])
-    elif provider["name"] == "MEXC":
-        return float(body["price"])
-    else:  # KuCoin
-        data = body.get("data")
-        if not data or not data.get("price"):
-            return None
-        return float(data["price"])
+        if body.get("retCode") == 0 and items:
+            rate = float(items[0]["lastPrice"])
+            rub_rate = rate
+            return rate
+    except Exception as e:
+        print("Ошибка получения курса RUB:", e)
+    return None
 
 
 def fetch_prices():
@@ -78,14 +106,9 @@ def fetch_prices():
     for provider in PROVIDERS:
         prices = {}
         for symbol in COINS:
-            try:
-                price = fetch_one_price(provider, symbol)
-                if price is not None:
-                    prices[symbol] = price
-            except Exception as e:
-                print(f"Ошибка запроса ({provider['name']} {symbol}):", e)
-                errors.append(f"{provider['name']} {symbol}: {e}")
-
+            price = fetch_one_price(provider, symbol)
+            if price is not None:
+                prices[symbol] = price
         if prices:
             return prices
 
@@ -94,9 +117,12 @@ def fetch_prices():
 
 
 def on_refresh():
-    """Обновляет таблицу курсов и планирует следующее обновление."""
+    """Обновляет таблицу курсов, добавляет расчёт в рублях и планирует следующее обновление."""
     btn_refresh.config(state="disabled")
     lbl_updated.config(text="Загрузка...")
+
+    # Сначала пробуем получить курс рубля — это отдельный независимый запрос
+    rub_ok = fetch_rub_rate() is not None
 
     data = fetch_prices()
 
@@ -111,25 +137,34 @@ def on_refresh():
         for widget in frame_table.winfo_children():
             widget.destroy()
 
-        # Заголовки: 2 колонки (Криптовалюта, Цена USD)
+        # Заголовки: 3 колонки (Криптовалюта, Цена USD, Цена RUB)
         ttk.Label(frame_table, text="Криптовалюта", font=("Arial", 12, "bold")).grid(row=0, column=0, sticky="w", padx=10)
         ttk.Label(frame_table, text="Цена (USD)", font=("Arial", 12, "bold")).grid(row=0, column=1, sticky="e", padx=10)
+        ttk.Label(frame_table, text="Цена (RUB)", font=("Arial", 12, "bold")).grid(row=0, column=2, sticky="e", padx=10)
 
         row = 1
         for symbol in COINS:
             name = get_coin_name(symbol)
-            price = data.get(symbol)
-            if price is not None:
-                price_str = f"{price:,.2f}"
+            price_usd = data.get(symbol)
+
+            if price_usd is not None:
+                price_str_usd = f"{price_usd:,.2f}"
+                price_rub = price_usd * rub_rate
+                # Форматируем рубли: разделители тысяч, 2 знака, символ ₽
+                price_str_rub = f"{price_rub:,.2f} ₽"
+
                 ttk.Label(frame_table, text=name).grid(row=row, column=0, sticky="w", padx=10, pady=5)
-                ttk.Label(frame_table, text=price_str).grid(row=row, column=1, sticky="e", padx=10, pady=5)
+                ttk.Label(frame_table, text=price_str_usd).grid(row=row, column=1, sticky="e", padx=10, pady=5)
+                ttk.Label(frame_table, text=price_str_rub).grid(row=row, column=2, sticky="e", padx=10, pady=5)
             else:
                 ttk.Label(frame_table, text=name, foreground="gray").grid(row=row, column=0, sticky="w", padx=10, pady=5)
-                ttk.Label(frame_table, text="Нет данных", foreground="gray").grid(row=row, column=1, sticky="e", padx=10, pady=5)
+                ttk.Label(frame_table, text="-", foreground="gray").grid(row=row, column=1, sticky="e", padx=10, pady=5)
+                ttk.Label(frame_table, text="-", foreground="gray").grid(row=row, column=2, sticky="e", padx=10, pady=5)
             row += 1
 
         now = datetime.now().strftime("%H:%M:%S")
-        lbl_updated.config(text=f"Обновлено: {now}")
+        rate_text = f"{rub_rate:,.2f}" if rub_ok else "курс не получен"
+        lbl_updated.config(text=f"Обновлено: {now} | USD/RUB = {rate_text}")
 
     btn_refresh.config(state="normal")
     root.after(REFRESH_INTERVAL_MS, on_refresh)
@@ -187,31 +222,31 @@ def on_remove_coin():
     on_refresh()
 
 
-# --- ИНТЕРФЕЙС (ПОЛНЫЙ GRID + АДАПТИВНОСТЬ) ---
+# --- ИНТЕРФЕЙС (ПОЛНЫЙ GRID + АДАПТИВНОСТЬ + РУБЛИ) ---
 root = tk.Tk()
 root.title("ACR_crypto-rates")
-root.geometry("1040x600")  # Окно пошире для двух колонок
+root.geometry("1120x600")  # Чуть шире для третьего столбца
 
 # Настраиваем главный контейнер: 2 столбца (левая часть, правая часть)
-root.columnconfigure(0, weight=1)  # Левая часть (таблица) растягивается
-root.columnconfigure(1, weight=1)  # Правая часть (списки) растягивается
-root.rowconfigure(0, weight=1)      # Вся высота окна доступна
+root.columnconfigure(0, weight=1)
+root.columnconfigure(1, weight=1)
+root.rowconfigure(0, weight=1)
 
 # Левая часть: таблица и кнопки
 frame_main = ttk.Frame(root)
 frame_main.grid(row=0, column=0, sticky="nsew", padx=12, pady=8)
 
-# Растягиваем единственный столбец внутри frame_main
 frame_main.columnconfigure(0, weight=1)
-frame_main.rowconfigure(1, weight=1)  # Таблица занимает всё свободное место
+frame_main.rowconfigure(1, weight=1)
 
 ttk.Label(frame_main, text="Курсы криптовалют", font=("Arial", 16, "bold")).grid(row=0, column=0, pady=(0, 18))
 
 frame_table = ttk.Frame(frame_main)
 frame_table.grid(row=1, column=0, sticky="nsew", padx=8, pady=4)
-# Внутри frame_table тоже делаем адаптивную сетку для заголовков и строк
+# Три колонки таблицы: монета, USD, RUB
 frame_table.columnconfigure(0, weight=1)
-frame_table.columnconfigure(1, weight=0) # Цена не растягивается сильно
+frame_table.columnconfigure(1, weight=0)
+frame_table.columnconfigure(2, weight=0)
 
 btn_refresh = ttk.Button(frame_main, text="Обновить курсы", command=on_refresh)
 btn_refresh.grid(row=2, column=0, pady=10)
@@ -223,7 +258,6 @@ lbl_updated.grid(row=3, column=0, sticky="s", pady=12)
 frame_panel = ttk.Frame(root)
 frame_panel.grid(row=0, column=1, sticky="nsew", padx=12, pady=8)
 
-# Настраиваем растягивание колонок внутри панели
 frame_panel.columnconfigure(0, weight=1)
 frame_panel.columnconfigure(1, weight=1)
 frame_panel.rowconfigure(0, weight=1)
