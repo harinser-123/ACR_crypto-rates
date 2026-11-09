@@ -1,17 +1,11 @@
 import tkinter as tk
 from tkinter import ttk, messagebox
 from datetime import datetime
-
 import requests
 
-# Список монет для отображения (тикеры: BTC, ETH и т. д.).
-# Пользователь может добавлять и удалять монеты прямо в приложении.
+# --- НАСТРОЙКИ ---
 COINS = ["BTC", "ETH", "SOL", "ADA", "DOGE"]
 
-# Публичные API бирж — цены без ключей и регистрации.
-# Каждый источник запрашивается ТОЧЕЧНО: по одной паре за запрос.
-# Ответ крошечный, поэтому тайм-ауты и медленная сеть не страшны.
-# Пробуем Bybit, если не отвечает — MEXC, затем KuCoin.
 PROVIDERS = [
     {"name": "Bybit", "url": "https://api.bybit.com/v5/market/tickers"},
     {"name": "MEXC", "url": "https://api.mexc.com/api/v3/ticker/price"},
@@ -20,87 +14,35 @@ PROVIDERS = [
 
 REFRESH_INTERVAL_MS = 120_000  # автообновление раз в 2 минуты
 
-# Обычный заголовок браузера — некоторые API отклоняют
-# запросы со стандартным User-Agent библиотеки requests.
 HEADERS = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
 
-# Локальный словарь популярных монет для поиска: имя -> тикер.
-# Поиск работает мгновенно и без запросов к сети.
 POPULAR_COINS = {
-    "Bitcoin": "BTC",
-    "Ethereum": "ETH",
-    "Tether": "USDT",
-    "BNB": "BNB",
-    "Solana": "SOL",
-    "Ripple": "XRP",
-    "Cardano": "ADA",
-    "Dogecoin": "DOGE",
-    "TRON": "TRX",
-    "Toncoin": "TON",
-    "Avalanche": "AVAX",
-    "Polkadot": "DOT",
-    "Chainlink": "LINK",
-    "Polygon": "POL",
-    "Litecoin": "LTC",
-    "Shiba Inu": "SHIB",
-    "Bitcoin Cash": "BCH",
-    "Uniswap": "UNI",
-    "Cosmos": "ATOM",
-    "Stellar": "XLM",
-    "Ethereum Classic": "ETC",
-    "Filecoin": "FIL",
-    "Arbitrum": "ARB",
-    "Optimism": "OP",
-    "Aptos": "APT",
-    "Sui": "SUI",
-    "NEAR Protocol": "NEAR",
-    "Injective": "INJ",
-    "Aave": "AAVE",
-    "Algorand": "ALGO",
-    "VeChain": "VET",
-    "Internet Computer": "ICP",
-    "Hedera": "HBAR",
-    "Pepe": "PEPE",
-    "FLOKI": "FLOKI",
-    "Bonk": "BONK",
-    "USD Coin": "USDC",
-    "Dai": "DAI",
-    "Wrapped Bitcoin": "WBTC",
-    "Render": "RENDER",
-    "Artificial Superintelligence Alliance": "FET",
-    "Celestia": "TIA",
-    "Jupiter": "JUP",
-    "Pyth Network": "PYTH",
-    "THORChain": "RUNE",
-    "The Graph": "GRT",
-    "The Sandbox": "SAND",
-    "Decentraland": "MANA",
-    "Gala": "GALA",
-    "Chiliz": "CHZ",
-    "Curve DAO": "CRV",
-    "Maker": "MKR",
-    "Lido DAO": "LDO",
-    "Stacks": "STX",
-    "Sei": "SEI",
-    "Kaspa": "KAS",
+    "Bitcoin": "BTC", "Ethereum": "ETH", "Tether": "USDT", "BNB": "BNB",
+    "Solana": "SOL", "Ripple": "XRP", "Cardano": "ADA", "Dogecoin": "DOGE",
+    "TRON": "TRX", "Toncoin": "TON", "Avalanche": "AVAX", "Polkadot": "DOT",
+    "Chainlink": "LINK", "Polygon": "POL", "Litecoin": "LTC", "Shiba Inu": "SHIB",
+    "Bitcoin Cash": "BCH", "Uniswap": "UNI", "Cosmos": "ATOM", "Stellar": "XLM",
+    "Ethereum Classic": "ETC", "Filecoin": "FIL", "Arbitrum": "ARB", "Optimism": "OP",
+    "Aptos": "APT", "Sui": "SUI", "NEAR Protocol": "NEAR", "Injective": "INJ",
+    "Aave": "AAVE", "Algorand": "ALGO", "VeChain": "VET", "Internet Computer": "ICP",
+    "Hedera": "HBAR", "Pepe": "PEPE", "FLOKI": "FLOKI", "Bonk": "BONK",
+    "USD Coin": "USDC", "Dai": "DAI", "Wrapped Bitcoin": "WBTC", "Render": "RENDER",
+    "Artificial Superintelligence Alliance": "FET", "Celestia": "TIA", "Jupiter": "JUP",
+    "Pyth Network": "PYTH", "THORChain": "RUNE", "The Graph": "GRT", "The Sandbox": "SAND",
+    "Decentraland": "MANA", "Gala": "GALA", "Chiliz": "CHZ", "Curve DAO": "CRV",
+    "Maker": "MKR", "Lido DAO": "LDO", "Stacks": "STX", "Sei": "SEI", "Kaspa": "KAS",
 }
 
-# Тикеры, по которым мы хоть раз получили цену (для фильтра поиска)
-available_pairs = set()
-
-last_error = ""  # текст последней ошибки для показа в окне
+last_error = ""
 
 
 def fetch_one_price(provider, symbol):
-    """Получает цену одной пары у конкретной биржи.
-
-    Возвращает число или None, если пара у этой биржи не торгуется.
-    """
+    """Получает цену одной пары у конкретной биржи."""
     if provider["name"] == "Bybit":
         params = {"category": "spot", "symbol": f"{symbol}USDT"}
     elif provider["name"] == "MEXC":
         params = {"symbol": f"{symbol}USDT"}
-    else:  # KuCoin — пары пишутся через дефис: BTC-USDT
+    else:  # KuCoin
         params = {"symbol": f"{symbol}-USDT"}
 
     response = requests.get(
@@ -115,12 +57,10 @@ def fetch_one_price(provider, symbol):
     if provider["name"] == "Bybit":
         result = body.get("result", {})
         items = result.get("list", [])
-        # Если пары нет, Bybit отвечает с кодом ошибки в retCode
         if body.get("retCode") != 0 or not items:
             return None
         return float(items[0]["lastPrice"])
     elif provider["name"] == "MEXC":
-        # Если пары нет, MEXC отдаёт HTTP-ошибку — её поймает raise_for_status
         return float(body["price"])
     else:  # KuCoin
         data = body.get("data")
@@ -130,13 +70,8 @@ def fetch_one_price(provider, symbol):
 
 
 def fetch_prices():
-    """Получает курсы всех монет списка точечными запросами.
-
-    Перебирает биржи по очереди: если биржа ответила хотя бы по одной
-    монете, дальше спрашиваем только у неё. Возвращает словарь
-    {тикер: цена в USD} или None, если не ответила ни одна биржа.
-    """
-    global last_error, available_pairs
+    """Получает курсы всех монет списка точечными запросами."""
+    global last_error
     last_error = ""
     errors = []
 
@@ -152,8 +87,6 @@ def fetch_prices():
                 errors.append(f"{provider['name']} {symbol}: {e}")
 
         if prices:
-            # Запоминаем монеты с известной ценой — для фильтра поиска
-            available_pairs = available_pairs | set(prices)
             return prices
 
     last_error = "\n".join(errors) if errors else "неизвестная ошибка"
@@ -162,7 +95,6 @@ def fetch_prices():
 
 def on_refresh():
     """Обновляет таблицу курсов и планирует следующее обновление."""
-    # Блокируем кнопку во время загрузки (чтобы не нажимали много раз)
     btn_refresh.config(state="disabled")
     lbl_updated.config(text="Загрузка...")
 
@@ -175,11 +107,11 @@ def on_refresh():
         )
         lbl_updated.config(text="Обновлено: —")
     else:
-        # Очищаем и заново заполняем таблицу
+        # Очищаем таблицу
         for widget in frame_table.winfo_children():
             widget.destroy()
 
-        # Заголовки таблицы
+        # Заголовки: 2 колонки (Криптовалюта, Цена USD)
         ttk.Label(frame_table, text="Криптовалюта", font=("Arial", 12, "bold")).grid(row=0, column=0, sticky="w", padx=10)
         ttk.Label(frame_table, text="Цена (USD)", font=("Arial", 12, "bold")).grid(row=0, column=1, sticky="e", padx=10)
 
@@ -188,10 +120,9 @@ def on_refresh():
             name = get_coin_name(symbol)
             price = data.get(symbol)
             if price is not None:
-                # Форматируем цену: 2 знака после запятой, разделители тысяч
                 price_str = f"{price:,.2f}"
                 ttk.Label(frame_table, text=name).grid(row=row, column=0, sticky="w", padx=10, pady=5)
-                ttk.Label(frame_table, text=price_str).grid(row=row, column=1, sticky="e", padx=10, pady=5)
+                ttk.Label(frame_table, text=price_str).grid(row=row, column=1, sticky="e", padx=10, pdy=5)
             else:
                 ttk.Label(frame_table, text=name, foreground="gray").grid(row=row, column=0, sticky="w", padx=10, pady=5)
                 ttk.Label(frame_table, text="Нет данных", foreground="gray").grid(row=row, column=1, sticky="e", padx=10, pady=5)
@@ -201,154 +132,118 @@ def on_refresh():
         lbl_updated.config(text=f"Обновлено: {now}")
 
     btn_refresh.config(state="normal")
-    # Планируем следующий запуск в любом случае
     root.after(REFRESH_INTERVAL_MS, on_refresh)
 
 
 def get_coin_name(symbol):
-    """Возвращает полное имя монеты по тикеру из локального словаря."""
     for name, sym in POPULAR_COINS.items():
         if sym == symbol:
             return name
     return symbol
 
 
-def refresh_coin_list():
-    """Перерисовывает список монет в панели справа."""
-    lb_coins.delete(0, tk.END)
+# --- Логика списков (два столбца) ---
+
+def refresh_current_list():
+    lb_current.delete(0, tk.END)
     for symbol in COINS:
-        lb_coins.insert(tk.END, f"{get_coin_name(symbol)} ({symbol})")
+        name = get_coin_name(symbol)
+        lb_current.insert(tk.END, f"{name} ({symbol})")
 
 
-def on_search_coin():
-    """Ищет монеты по названию или тикеру в локальном словаре.
-
-    Если по каким-то монетам уже приходили цены — показывает только их,
-    иначе всё, что нашлось в словаре.
-    """
-    global search_results
-
-    query = entry_search.get().strip()
-    if not query:
-        messagebox.showwarning("Внимание", "Введите название монеты, например Bitcoin.")
-        return
-
-    q = query.lower()
-
-    matches = [
-        {"symbol": sym, "name": name}
-        for name, sym in POPULAR_COINS.items()
-        if q in name.lower() or q in sym.lower()
-    ]
-
-    if available_pairs:
-        # Есть данные с биржи — фильтруем по монетам с известной ценой
-        results = [c for c in matches if c["symbol"] in available_pairs]
-    else:
-        results = matches
-
-    lb_results.delete(0, tk.END)
-    search_results = results
-
-    if not results:
-        lb_results.insert(tk.END, "Ничего не найдено")
-        return
-
-    for c in results[:10]:
-        lb_results.insert(tk.END, f"{c['name']} ({c['symbol']})")
+def refresh_catalog():
+    lb_catalog.delete(0, tk.END)
+    sorted_coins = sorted(POPULAR_COINS.items(), key=lambda x: x[0])
+    for name, symbol in sorted_coins:
+        lb_catalog.insert(tk.END, f"{name} ({symbol})")
 
 
-def on_add_selected():
-    """Добавляет монету, выбранную в списке результатов поиска."""
-    selection = lb_results.curselection()
+def on_add_from_catalog():
+    selection = lb_catalog.curselection()
     if not selection:
-        messagebox.showwarning("Внимание", "Сначала найдите монету и выберите её в списке результатов.")
+        messagebox.showwarning("Внимание", "Выберите монету в каталоге справа.")
         return
 
-    coin = search_results[selection[0]]
-    symbol = coin["symbol"]
+    text = lb_catalog.get(selection[0])
+    symbol = text.split("(")[1].split(")")[0]
 
     if symbol in COINS:
-        messagebox.showwarning("Внимание", "Эта монета уже в списке.")
+        messagebox.showinfo("Инфо", "Эта монета уже есть в таблице.")
         return
 
     COINS.append(symbol)
-    entry_search.delete(0, tk.END)
-    lb_results.delete(0, tk.END)
-    refresh_coin_list()
-    on_refresh()  # сразу показываем новую монету в таблице
-
-
-def on_remove_coin():
-    """Удаляет монету, выбранную в списке справа."""
-    selection = lb_coins.curselection()
-    if not selection:
-        messagebox.showwarning("Внимание", "Выберите монету в списке справа.")
-        return
-    index = selection[0]
-    COINS.pop(index)
-    refresh_coin_list()
+    refresh_current_list()
     on_refresh()
 
 
-# Создаём главное окно
+def on_remove_coin():
+    selection = lb_current.curselection()
+    if not selection:
+        messagebox.showwarning("Внимание", "Сначала выберите монету в списке «Текущие».")
+        return
+    index = selection[0]
+    COINS.pop(index)
+    refresh_current_list()
+    on_refresh()
+
+
+# --- ИНТЕРФЕЙС ---
 root = tk.Tk()
-root.title("Курсы криптовалют")
-root.geometry("700x460")
+root.title("ACR_crypto-rates")
+root.geometry("960x560")  # окно пошире для двух колонок
 
-# Левая часть: таблица, кнопка, статус
+# Левая часть: таблица и кнопки
 frame_main = ttk.Frame(root)
-frame_main.pack(side="left", fill="both", expand=True, padx=10, pady=5)
+frame_main.pack(side="left", fill="both", expand=True, padx=12, pady=8)
 
-# Заголовок
-lbl_title = ttk.Label(frame_main, text="Курсы криптовалют", font=("Arial", 16, "bold"))
-lbl_title.pack(pady=20)
+ttk.Label(frame_main, text="Курсы криптовалют", font=("Arial", 16, "bold")).pack(pady=18)
 
-# Таблица курсов
 frame_table = ttk.Frame(frame_main)
-frame_table.pack(fill="both", expand=True, padx=10, pady=5)
+frame_table.pack(fill="both", expand=True, padx=8, pady=4)
 
-# Кнопка ручного обновления курсов
 btn_refresh = ttk.Button(frame_main, text="Обновить курсы", command=on_refresh)
 btn_refresh.pack(pady=10)
 
-# Статус обновления
 lbl_updated = ttk.Label(frame_main, text="Обновлено: —", foreground="gray")
-lbl_updated.pack(side="bottom", pady=10)
+lbl_updated.pack(side="bottom", pady=12)
 
-# Правая часть: управление списком монет
+# Правая часть: два столбца рядом
 frame_panel = ttk.Frame(root)
-frame_panel.pack(side="right", fill="y", padx=10, pady=5)
+frame_panel.pack(side="right", fill="y", padx=12, pady=8)
 
-lbl_panel = ttk.Label(frame_panel, text="Мои монеты", font=("Arial", 12, "bold"))
-lbl_panel.pack(pady=5)
+# Настраиваем растягивание колонок
+frame_panel.columnconfigure(0, weight=1)
+frame_panel.columnconfigure(1, weight=1)
+frame_panel.rowconfigure(0, weight=1)
 
-lb_coins = tk.Listbox(frame_panel, height=7, width=26)
-lb_coins.pack(padx=5, pady=5)
+# Левый столбец панели: Текущие монеты
+frame_current = ttk.LabelFrame(frame_panel, text="Текущие монеты", padding=6)
+frame_current.grid(row=0, column=0, sticky="nsew", padx=(0, 6), pady=0)
+frame_current.columnconfigure(0, weight=1)
+frame_current.rowconfigure(1, weight=1)
 
-btn_remove = ttk.Button(frame_panel, text="Удалить выбранную", command=on_remove_coin)
-btn_remove.pack(fill="x", padx=5, pady=(5, 0))
+lb_current = tk.Listbox(frame_current, height=14, width=26)
+lb_current.grid(row=1, column=0, sticky="nsew")
 
-# Блок поиска монет
-lbl_search = ttk.Label(frame_panel, text="Поиск монеты", font=("Arial", 12, "bold"))
-lbl_search.pack(pady=(15, 5))
+btn_remove = ttk.Button(frame_current, text="Удалить выбранную", command=on_remove_coin)
+btn_remove.grid(row=2, column=0, sticky="ew", pady=(8, 0))
 
-entry_search = ttk.Entry(frame_panel, width=26)
-entry_search.pack(padx=5, pady=(0, 5))
+# Правый столбец панели: Каталог монет
+frame_catalog = ttk.LabelFrame(frame_panel, text="Каталог монет", padding=6)
+frame_catalog.grid(row=0, column=1, sticky="nsew", padx=(6, 0), pady=0)
+frame_catalog.columnconfigure(0, weight=1)
+frame_catalog.rowconfigure(1, weight=1)
 
-btn_search = ttk.Button(frame_panel, text="Найти", command=on_search_coin)
-btn_search.pack(fill="x", padx=5, pady=(0, 5))
+lb_catalog = tk.Listbox(frame_catalog, height=14, width=26)
+lb_catalog.grid(row=1, column=0, sticky="nsew")
 
-lb_results = tk.Listbox(frame_panel, height=7, width=26)
-lb_results.pack(padx=5, pady=5)
+btn_add = ttk.Button(frame_catalog, text="Добавить выбранную", command=on_add_from_catalog)
+btn_add.grid(row=2, column=0, sticky="ew", pady=(8, 0))
 
-btn_add = ttk.Button(frame_panel, text="Добавить выбранную", command=on_add_selected)
-btn_add.pack(fill="x", padx=5, pady=(5, 0))
-
-refresh_coin_list()
-search_results = []  # сюда сохраняются результаты последнего поиска
+# Инициализация списков
+refresh_current_list()
+refresh_catalog()
 
 # Первое обновление сразу при запуске
 root.after(0, on_refresh)
-
 root.mainloop()
