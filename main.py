@@ -20,18 +20,20 @@ REFRESH_INTERVAL_MS = 120_000  # автообновление раз в 2 мин
 def fetch_prices():
     """Получает курсы криптовалют из API CoinPaprika.
 
+    Делает отдельный запрос для каждой монеты из списка.
     Возвращает словарь {id монеты: цена в USD}
-    или None, если запрос не удался.
+    или None, если не удалось получить ни одного ответа.
     """
-    try:
-        response = requests.get(API_URL, timeout=10)
-        response.raise_for_status()
-        tickers = response.json()
-        # Превращаем список тикеров в словарь {id: цена}
-        return {t["id"]: t["quotes"]["USD"]["price"] for t in tickers}
-    except Exception as e:
-        print("Ошибка запроса:", e)
-        return None
+    prices = {}
+    for _, coin_id in CRYPTO_COINS:
+        try:
+            response = requests.get(f"{API_URL}/{coin_id}", timeout=30)
+            response.raise_for_status()
+            t = response.json()
+            prices[t["id"]] = t["quotes"]["USD"]["price"]
+        except Exception as e:
+            print(f"Ошибка запроса ({coin_id}):", e)
+    return prices if prices else None
 
 def on_refresh():
     """Обновляет таблицу курсов и планирует следующее обновление."""
@@ -72,6 +74,8 @@ def on_refresh():
     btn_refresh.config(state="normal")
     # Планируем следующий запуск в любом случае
     root.after(REFRESH_INTERVAL_MS, on_refresh)
+
+
 root = tk.Tk()
 root.title("Курсы криптовалют")
 root.geometry("450x400")
