@@ -122,7 +122,7 @@ def on_refresh():
             if price is not None:
                 price_str = f"{price:,.2f}"
                 ttk.Label(frame_table, text=name).grid(row=row, column=0, sticky="w", padx=10, pady=5)
-                ttk.Label(frame_table, text=price_str).grid(row=row, column=1, sticky="e", padx=10, pdy=5)
+                ttk.Label(frame_table, text=price_str).grid(row=row, column=1, sticky="e", padx=10, pady=5)
             else:
                 ttk.Label(frame_table, text=name, foreground="gray").grid(row=row, column=0, sticky="w", padx=10, pady=5)
                 ttk.Label(frame_table, text="Нет данных", foreground="gray").grid(row=row, column=1, sticky="e", padx=10, pady=5)
@@ -187,31 +187,43 @@ def on_remove_coin():
     on_refresh()
 
 
-# --- ИНТЕРФЕЙС ---
+# --- ИНТЕРФЕЙС (ПОЛНЫЙ GRID + АДАПТИВНОСТЬ) ---
 root = tk.Tk()
 root.title("ACR_crypto-rates")
-root.geometry("960x560")  # окно пошире для двух колонок
+root.geometry("1040x600")  # Окно пошире для двух колонок
+
+# Настраиваем главный контейнер: 2 столбца (левая часть, правая часть)
+root.columnconfigure(0, weight=1)  # Левая часть (таблица) растягивается
+root.columnconfigure(1, weight=1)  # Правая часть (списки) растягивается
+root.rowconfigure(0, weight=1)      # Вся высота окна доступна
 
 # Левая часть: таблица и кнопки
 frame_main = ttk.Frame(root)
-frame_main.pack(side="left", fill="both", expand=True, padx=12, pady=8)
+frame_main.grid(row=0, column=0, sticky="nsew", padx=12, pady=8)
 
-ttk.Label(frame_main, text="Курсы криптовалют", font=("Arial", 16, "bold")).pack(pady=18)
+# Растягиваем единственный столбец внутри frame_main
+frame_main.columnconfigure(0, weight=1)
+frame_main.rowconfigure(1, weight=1)  # Таблица занимает всё свободное место
+
+ttk.Label(frame_main, text="Курсы криптовалют", font=("Arial", 16, "bold")).grid(row=0, column=0, pady=(0, 18))
 
 frame_table = ttk.Frame(frame_main)
-frame_table.pack(fill="both", expand=True, padx=8, pady=4)
+frame_table.grid(row=1, column=0, sticky="nsew", padx=8, pady=4)
+# Внутри frame_table тоже делаем адаптивную сетку для заголовков и строк
+frame_table.columnconfigure(0, weight=1)
+frame_table.columnconfigure(1, weight=0) # Цена не растягивается сильно
 
 btn_refresh = ttk.Button(frame_main, text="Обновить курсы", command=on_refresh)
-btn_refresh.pack(pady=10)
+btn_refresh.grid(row=2, column=0, pady=10)
 
 lbl_updated = ttk.Label(frame_main, text="Обновлено: —", foreground="gray")
-lbl_updated.pack(side="bottom", pady=12)
+lbl_updated.grid(row=3, column=0, sticky="s", pady=12)
 
-# Правая часть: два столбца рядом
+# Правая часть: два столбца рядом (Текущие и Каталог)
 frame_panel = ttk.Frame(root)
-frame_panel.pack(side="right", fill="y", padx=12, pady=8)
+frame_panel.grid(row=0, column=1, sticky="nsew", padx=12, pady=8)
 
-# Настраиваем растягивание колонок
+# Настраиваем растягивание колонок внутри панели
 frame_panel.columnconfigure(0, weight=1)
 frame_panel.columnconfigure(1, weight=1)
 frame_panel.rowconfigure(0, weight=1)
