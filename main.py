@@ -1,5 +1,36 @@
 import tkinter as tk
 from tkinter import ttk
+import requests
+from datetime import datetime
+
+# Список монет для отображения (id из CoinPaprika)
+CRYPTO_COINS = [
+    ("Bitcoin", "btc-bitcoin"),
+    ("Ethereum", "eth-ethereum"),
+    ("Solana", "sol-solana"),
+    ("Cardano", "ada-cardano"),
+    ("Dogecoin", "doge-dogecoin"),
+]
+
+API_URL = "https://api.coinpaprika.com/v1/tickers"
+REFRESH_INTERVAL_MS = 120_000  # автообновление раз в 2 минуты
+
+
+def fetch_prices():
+    """Получает курсы криптовалют из API CoinPaprika.
+
+    Возвращает словарь {id монеты: цена в USD}
+    или None, если запрос не удался.
+    """
+    try:
+        response = requests.get(API_URL, timeout=10)
+        response.raise_for_status()
+        tickers = response.json()
+        # Превращаем список тикеров в словарь {id: цена}
+        return {t["id"]: t["quotes"]["USD"]["price"] for t in tickers}
+    except Exception as e:
+        print("Ошибка запроса:", e)
+        return None
 
 # Каркас приложения. Логика API будет добавлена на следующих этапах.
 
