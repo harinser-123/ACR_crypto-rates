@@ -1,8 +1,8 @@
 import tkinter as tk
-from tkinter import ttk
+from tkinter import ttk, messagebox
 import requests
 from datetime import datetime
-from tkinter import ttk, messagebox
+
 
 # Список монет для отображения (id из CoinPaprika)
 CRYPTO_COINS = [
@@ -33,7 +33,6 @@ def fetch_prices():
         print("Ошибка запроса:", e)
         return None
 
-# Каркас приложения. Логика API будет добавлена на следующих этапах.
 def on_refresh():
     """Обновляет таблицу курсов и планирует следующее обновление."""
     # Блокируем кнопку во время загрузки (чтобы не нажимали много раз)
@@ -85,12 +84,13 @@ lbl_title.pack(pady=20)
 frame_table = ttk.Frame(root)
 frame_table.pack(fill="both", expand=True, padx=10, pady=5)
 
-# Кнопка обновления (пока без функционала)
-btn_refresh = ttk.Button(root, text="Обновить курсы")
+btn_refresh = ttk.Button(root, text="Обновить курсы", command=on_refresh)
 btn_refresh.pack(pady=10)
 
 # Статус обновления
 lbl_updated = ttk.Label(root, text="Обновлено: —", foreground="gray")
 lbl_updated.pack(side="bottom", pady=10)
+# Первое обновление сразу при запуске
+root.after(0, on_refresh)
 
 root.mainloop()
