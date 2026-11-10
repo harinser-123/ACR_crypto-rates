@@ -2,7 +2,7 @@
 # ACR_crypto-rates — учебный проект мониторинга курсов криптовалют с конвертацией в RUB
 # API: Bybit, MEXC, KuCoin (криптовалюты); kurs-rublya.ru (курс USD/RUB)
 # Особенности: многоисточниковость, fallback-курс, неблокирующее обновление (threading)
-# Автор: [ТВОЁ ИМЯ]
+# Автор: [Харин Сергей Модестович]
 # Платформа: Python + Tkinter
 
 import tkinter as tk
